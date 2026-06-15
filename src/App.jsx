@@ -707,7 +707,7 @@ function ItemForm({ data, order, onSave, onClose }) {
 
       {/* Photo + name row */}
       <div style={{ display: "flex", gap: 12, marginBottom: 14, alignItems: "flex-start" }}>
-        <input ref={fRef} type="file" accept="image/*" capture="environment" onChange={pickFile} style={{ display: "none" }} />
+        <input ref={fRef} type="file" accept="image/*" onChange={pickFile} style={{ display: "none" }} />
         {photo
           ? <div style={{ position: "relative", flexShrink: 0 }}>
               <img src={photo} alt="" style={{ width: 78, height: 78, objectFit: "cover", borderRadius: 12 }} />
