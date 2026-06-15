@@ -181,11 +181,16 @@ const $ = {
 /* ═══════════════════════════════════════════════════════════════
    Root App
    ═══════════════════════════════════════════════════════════════ */
+const getHashId = () => {
+  const h = window.location.hash;
+  return h.startsWith("#order-") ? h.slice(7) : null;
+};
+
 export default function App() {
   const [orders, setOrders] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [modal, setModal] = useState(null);
-  const [view, setView] = useState("sidebar");
+  const [hashId, setHashId] = useState(getHashId);
   const [mobile, setMobile] = useState(window.innerWidth < 720);
   const [ready, setReady] = useState(false);
 
@@ -193,6 +198,12 @@ export default function App() {
     const h = () => setMobile(window.innerWidth < 720);
     window.addEventListener("resize", h);
     return () => window.removeEventListener("resize", h);
+  }, []);
+
+  useEffect(() => {
+    const onHash = () => setHashId(getHashId());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   useEffect(() => {
@@ -226,13 +237,21 @@ export default function App() {
 
   const active = orders.find((o) => o.id === activeId) ?? null;
 
+  const openOrder = (id) => {
+    setActiveId(id); saveActiveId(id);
+    if (mobile) window.location.hash = `order-${id}`;
+  };
+
+  const goBack = () => {
+    if (mobile) window.history.back();
+  };
+
   /* Order ops */
   const createOrder = (d) => {
     const o = { id: uid(), items: [], ...d };
     const next = [...orders, o];
-    setOrders(next); setActiveId(o.id); saveActiveId(o.id);
-    lsSave(next, o.id); dbUpsert(o);
-    setView("detail"); setModal(null);
+    setOrders(next); lsSave(next, o.id); dbUpsert(o);
+    openOrder(o.id); setModal(null);
   };
   const updateOrder = (id, d) => {
     const next = orders.map((o) => o.id === id ? { ...o, ...d } : o);
@@ -244,7 +263,8 @@ export default function App() {
     const nextId = next[0]?.id ?? null;
     setOrders(next); setActiveId(nextId); saveActiveId(nextId);
     lsSave(next, nextId); dbDelete(id);
-    setView("sidebar"); setModal(null);
+    if (mobile) window.location.hash = "";
+    setModal(null);
   };
 
   /* Item ops */
@@ -273,7 +293,7 @@ export default function App() {
     <div style={{ height: "100vh", display: "flex", background: T.bg, fontFamily: "-apple-system,'Helvetica Neue',system-ui,sans-serif", fontSize: 14, color: T.text, overflow: "hidden" }}>
 
       {/* ── SIDEBAR ─────────────────────────────────────────── */}
-      {(!mobile || view === "sidebar") && (
+      {(!mobile || !hashId) && (
         <aside style={{ width: mobile ? "100%" : 264, flexShrink: 0, background: T.card, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Brand header */}
           <header style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${T.border}` }}>
@@ -300,7 +320,7 @@ export default function App() {
               const margin = o.items.length > 0 && rev > 0 ? (profit / rev) * 100 : null;
               return (
                 <div key={o.id}
-                  onClick={() => { setActiveId(o.id); saveStore({ orders, activeId: o.id }); setView("detail"); }}
+                  onClick={() => openOrder(o.id)}
                   style={{ padding: "12px 16px", cursor: "pointer", borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${act ? T.accent : "transparent"}`, background: act ? T.accentDim : "transparent", transition: "background 0.1s" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: act ? T.accent : T.text }}>
@@ -343,17 +363,17 @@ export default function App() {
       )}
 
       {/* ── MAIN ────────────────────────────────────────────── */}
-      {(!mobile || view === "detail") && (
+      {(!mobile || hashId) && (
         <main style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active
             ? <Detail order={active} mobile={mobile}
-                onBack={() => setView("sidebar")}
+                onBack={goBack}
                 onEdit={() => setModal({ type: "order", data: active })}
                 onAddItem={() => setModal({ type: "item" })}
                 onEditItem={(item) => setModal({ type: "item", data: item })}
                 onDelItem={deleteItem}
                 onExport={() => exportSalesTable(active)} />
-            : <EmptyMain mobile={mobile} onBack={() => setView("sidebar")} />
+            : <EmptyMain mobile={mobile} onBack={goBack} />
           }
         </main>
       )}
