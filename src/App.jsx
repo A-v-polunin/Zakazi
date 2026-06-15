@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import { supabase } from "./supabase";
 
 /* ── Utils ──────────────────────────────────────────────────── */
@@ -98,6 +99,25 @@ const exportSalesTable = async (order) => {
   const a = Object.assign(document.createElement("a"), {
     href: URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })),
     download: `${order.name || "заказ"}.xlsx`,
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ── Photo ZIP export ───────────────────────────────────────── */
+const exportPhotos = async (order) => {
+  const items = order.items.filter(i => i.photo);
+  if (!items.length) return alert("В заказе нет фотографий");
+  const zip = new JSZip();
+  items.forEach((item, idx) => {
+    const base64 = item.photo.split(",")[1];
+    const name = (item.name || `товар_${idx + 1}`).replace(/[/\\?%*:|"<>]/g, "_");
+    zip.file(`${idx + 1}_${name}.jpg`, base64, { base64: true });
+  });
+  const blob = await zip.generateAsync({ type: "blob" });
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(blob),
+    download: `${order.name || "заказ"}_фото.zip`,
   });
   a.click();
   URL.revokeObjectURL(a.href);
@@ -396,7 +416,8 @@ export default function App() {
                 onAddItem={() => setModal({ type: "item" })}
                 onEditItem={(item) => setModal({ type: "item", data: item })}
                 onDelItem={deleteItem}
-                onExport={() => exportSalesTable(active)} />
+                onExport={() => exportSalesTable(active)}
+                onExportPhotos={() => exportPhotos(active)} />
             : <EmptyMain mobile={mobile} onBack={goBack} />
           }
         </main>
@@ -423,7 +444,7 @@ export default function App() {
 }
 
 /* ── Detail view ────────────────────────────────────────────── */
-function Detail({ order, mobile, onBack, onEdit, onAddItem, onEditItem, onDelItem, onExport }) {
+function Detail({ order, mobile, onBack, onEdit, onAddItem, onEditItem, onDelItem, onExport, onExportPhotos }) {
   const { cost, rev, profit } = orderCalc(order);
   const delRub = deliveryRub(order);
   const perItem = order.items.length > 0 && delRub > 0 ? delRub / order.items.length : 0;
@@ -514,6 +535,9 @@ function Detail({ order, mobile, onBack, onEdit, onAddItem, onEditItem, onDelIte
         <button onClick={onAddItem} style={$.btnRed}>+ Добавить товар</button>
         {order.items.length > 0 && (
           <button onClick={onExport} style={$.btnOutline}>📊 Таблица для продажи</button>
+        )}
+        {order.items.some(i => i.photo) && (
+          <button onClick={onExportPhotos} style={$.btnOutline}>🖼 Фото для отправки</button>
         )}
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", gap: 14, fontSize: 12, flexWrap: "wrap", alignItems: "center" }}>
