@@ -144,6 +144,21 @@ const dbDelete = (id) => {
     .then(({ error }) => { if (error) console.warn("dbDelete error:", error.message); });
 };
 
+/* ── Label colors ───────────────────────────────────────────── */
+const LABEL_PALETTE = [
+  { bg: "#EFF6FF", border: "#BFDBFE", text: "#1D4ED8" },
+  { bg: "#F0FDF4", border: "#BBF7D0", text: "#15803D" },
+  { bg: "#FFF7ED", border: "#FED7AA", text: "#C2410C" },
+  { bg: "#FAF5FF", border: "#E9D5FF", text: "#7C3AED" },
+  { bg: "#FFF1F2", border: "#FECDD3", text: "#BE123C" },
+];
+const labelColor = (label) => {
+  if (!label) return null;
+  let h = 0;
+  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
+  return LABEL_PALETTE[h % LABEL_PALETTE.length];
+};
+
 /* ── Design tokens ──────────────────────────────────────────── */
 const T = {
   bg: "#F7F8FC",
@@ -467,6 +482,32 @@ function Detail({ order, mobile, onBack, onEdit, onAddItem, onEditItem, onDelIte
       )}
     </div>
 
+    {/* Per-label breakdown */}
+    {(() => {
+      const labeled = order.items.filter(i => i.label);
+      if (!labeled.length) return null;
+      const map = {};
+      for (const item of order.items) {
+        const key = item.label || "—";
+        if (!map[key]) map[key] = 0;
+        map[key] += itemCalc(item, order).profit;
+      }
+      return (
+        <div style={{ background: T.bg, borderTop: `1px solid ${T.border}`, padding: "8px 14px", display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+          {Object.entries(map).map(([name, lp]) => {
+            const lc = name === "—" ? null : labelColor(name);
+            return (
+              <span key={name} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                {lc && <span style={{ width: 8, height: 8, borderRadius: "50%", background: lc.text, display: "inline-block" }} />}
+                <span style={{ color: T.sub }}>{name}:</span>
+                <b style={{ color: lp >= 0 ? T.green : T.red }}>{lp >= 0 ? "+" : ""}{fmt(lp)} ₽</b>
+              </span>
+            );
+          })}
+        </div>
+      );
+    })()}
+
     {/* Footer */}
     <div style={{ background: T.card, borderTop: `1px solid ${T.border}`, padding: "10px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
@@ -518,6 +559,11 @@ function ItemCard({ item, order, onEdit, onDel }) {
             <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {item.name || "Без названия"}
             </div>
+            {item.label && (() => { const lc = labelColor(item.label); return (
+              <span style={{ fontSize: 10, background: lc.bg, border: `1px solid ${lc.border}`, borderRadius: 6, padding: "1px 7px", fontWeight: 700, color: lc.text, flexShrink: 0 }}>
+                {item.label}
+              </span>
+            ); })()}
             {qty > 1 && (
               <span style={{ fontSize: 11, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6, padding: "1px 6px", fontWeight: 700, color: T.subDark, flexShrink: 0 }}>
                 ×{qty}
@@ -669,10 +715,13 @@ function ItemForm({ data, order, onSave, onClose }) {
   const [salePrice, setSp] = useState(data?.salePrice ?? "");
   const [rateOvr, setRo] = useState(data?.rateOverride ?? "");
   const [qty, setQty] = useState(String(data?.qty ?? "1"));
+  const [label, setLabel] = useState(data?.label ?? "");
   const [trackNum, setTrack] = useState(data?.trackNum ?? "");
   const [arrived, setArrived] = useState(data?.arrived ?? false);
   const [photo, setPhoto] = useState(data?.photo ?? null);
   const fRef = useRef();
+
+  const existingLabels = [...new Set(order.items.filter(i => i.label && i.id !== data?.id).map(i => i.label))];
 
   const qtyNum = Math.max(1, n(qty) || 1);
   const rate = n(rateOvr) || n(order.rate);
@@ -740,6 +789,25 @@ function ItemForm({ data, order, onSave, onClose }) {
         <input type="number" value={rateOvr} onChange={(e) => setRo(e.target.value)} style={$.input} placeholder={order.rate || "12"} step="0.01" min="0" inputMode="decimal" />
       </Field>
 
+      {/* Label / buyer */}
+      <Field label="Покупатель (необязательно)">
+        {existingLabels.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+            {existingLabels.map((l) => {
+              const lc = labelColor(l);
+              const sel = label === l;
+              return (
+                <button key={l} onClick={() => setLabel(sel ? "" : l)}
+                  style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: `1.5px solid ${sel ? lc.text : T.border}`, background: sel ? lc.bg : T.bg, color: sel ? lc.text : T.sub }}>
+                  {l}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <input value={label} onChange={(e) => setLabel(e.target.value)} style={$.input} placeholder="Макс, Витя, Кирилл…" />
+      </Field>
+
       {/* Track number */}
       <Field label="Трек-номер (необязательно)">
         <input value={trackNum} onChange={(e) => setTrack(e.target.value)} style={$.input} placeholder="RL123456789CN" />
@@ -786,7 +854,7 @@ function ItemForm({ data, order, onSave, onClose }) {
       )}
 
       <button
-        onClick={() => onSave({ name, yuanPrice, salePrice, rateOverride: rateOvr, qty: qtyNum, trackNum, arrived, photo })}
+        onClick={() => onSave({ name, yuanPrice, salePrice, rateOverride: rateOvr, qty: qtyNum, label, trackNum, arrived, photo })}
         style={{ ...$.btnRed, width: "100%", marginTop: 14, padding: "13px", borderRadius: 12, fontSize: 15, opacity: !yuanPrice ? 0.45 : 1, cursor: !yuanPrice ? "not-allowed" : "pointer" }}
         disabled={!yuanPrice}
       >
