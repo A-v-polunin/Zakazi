@@ -110,29 +110,38 @@ const AK = "otrk_active";
 const loadActiveId = () => { try { return localStorage.getItem(AK); } catch { return null; } };
 const saveActiveId = (id) => { try { localStorage.setItem(AK, id ?? ""); } catch {} };
 
-const loadOrders = async () => {
-  if (supabase) {
-    const { data } = await supabase.from("orders").select("*").order("created_at");
-    return data?.length ? data.map((r) => ({ id: r.id, ...r.data })) : [];
-  }
+const lsGetOrders = () => {
   try { const r = localStorage.getItem(SK); return r ? (JSON.parse(r).orders ?? []) : []; }
   catch { return []; }
 };
 
 const lsSave = (orders, activeId) => {
-  if (supabase) return;
   try { localStorage.setItem(SK, JSON.stringify({ orders, activeId })); } catch {}
+};
+
+const loadOrders = async () => {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from("orders").select("*").order("created_at");
+      if (error) throw error;
+      if (data?.length) return data.map((r) => ({ id: r.id, ...r.data }));
+    } catch (e) { console.warn("Supabase load failed, using localStorage:", e.message); }
+  }
+  return lsGetOrders();
 };
 
 const dbUpsert = (order) => {
   if (!supabase) return;
   const { id, ...data } = order;
-  supabase.from("orders").upsert({ id, data, updated_at: new Date().toISOString() });
+  supabase.from("orders")
+    .upsert({ id, data, updated_at: new Date().toISOString() })
+    .then(({ error }) => { if (error) console.warn("dbUpsert error:", error.message); });
 };
 
 const dbDelete = (id) => {
   if (!supabase) return;
-  supabase.from("orders").delete().eq("id", id);
+  supabase.from("orders").delete().eq("id", id)
+    .then(({ error }) => { if (error) console.warn("dbDelete error:", error.message); });
 };
 
 /* ── Design tokens ──────────────────────────────────────────── */
